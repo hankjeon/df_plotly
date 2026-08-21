@@ -29,56 +29,116 @@ with st.expander("Preview data"):
 
 columns = list(df.columns)
 
-col1, col2 = st.columns([1, 2])
-with col1:
-    x_col = st.selectbox("X axis", columns, index=0)
-with col2:
-    y_cols = st.multiselect("Y axis (select one or more)", [c for c in columns if c != x_col])
 
-if not y_cols:
-    st.info("Select at least one Y axis column.")
+if "charts" not in st.session_state:
+    st.session_state.charts = [{"id": 0}]
+if "next_id" not in st.session_state:
+    st.session_state.next_id = 1
+
+def add_chart():
+    st.session_state.charts.append({"id": st.session_state.next_id})
+    st.session_state.next_id += 1
+
+def remove_chart(cid):
+    st.session_state.charts = [c for c in st.session_state.charts if c["id"] != cid]
+
+x_col = st.selectbox("Global X axis", columns, index=0)
+
+st.write("---")
+
+valid_charts = []
+
+for i, chart in enumerate(st.session_state.charts):
+    cid = chart["id"]
+    with st.container():
+        c1, c2, c3 = st.columns([2, 5, 1])
+        with c1:
+            mode = st.radio("Layout", ["Overlay", "Stacked"], horizontal=True, key=f"mode_{cid}")
+        with c2:
+            y_cols = st.multiselect("Y axis", [c for c in columns if c != x_col], key=f"y_{cid}")
+            secondary_cols = []
+            if mode == "Overlay" and len(y_cols) > 1:
+                secondary_cols = st.multiselect("Secondary Y axis", y_cols, key=f"sec_y_{cid}")
+        with c3:
+            st.button("Remove", key=f"remove_{cid}", on_click=remove_chart, args=(cid,))
+
+        if y_cols:
+            valid_charts.append({
+                "mode": mode,
+                "y_cols": y_cols,
+                "secondary_cols": secondary_cols
+            })
+    st.write("---")
+
+st.button("Add Chart", on_click=add_chart)
+
+if not valid_charts:
+    st.info("Select at least one Y axis column in any chart to render.")
     st.stop()
 
-mode = st.radio("Layout", ["Overlay", "Stacked"], horizontal=True)
+# Calculate total rows and specs for subplots
+total_rows = 0
+specs = []
+subplot_titles = []
 
-if mode == "Overlay":
-    secondary_cols = []
-    if len(y_cols) > 1:
-        secondary_cols = st.multiselect(
-            "Secondary Y axis (optional — for columns on a different scale)",
-            y_cols,
-        )
-    primary_cols = [c for c in y_cols if c not in secondary_cols]
+for chart in valid_charts:
+    if chart["mode"] == "Overlay":
+        total_rows += 1
+        specs.append([{"secondary_y": bool(chart["secondary_cols"])}])
+        subplot_titles.append(", ".join(chart["y_cols"]))
+    else:
+        total_rows += len(chart["y_cols"])
+        for y_col in chart["y_cols"]:
+            specs.append([{"secondary_y": False}])
+            subplot_titles.append(y_col)
 
-    chart_height = 600
-    fig = go.Figure()
-    for y_col in y_cols:
-        fig.add_trace(
-            go.Scatter(
-                x=df[x_col],
-                y=df[y_col],
-                mode="lines",
-                name=y_col,
-                yaxis="y2" if y_col in secondary_cols else "y",
+fig = make_subplots(
+    rows=total_rows,
+    cols=1,
+    shared_xaxes=True,
+    subplot_titles=subplot_titles,
+    specs=specs
+)
+
+current_row = 1
+for chart in valid_charts:
+    if chart["mode"] == "Overlay":
+        primary_cols = [c for c in chart["y_cols"] if c not in chart["secondary_cols"]]
+        for y_col in chart["y_cols"]:
+            fig.add_trace(
+                go.Scatter(
+                    x=df[x_col],
+                    y=df[y_col],
+                    mode="lines",
+                    name=y_col,
+                ),
+                row=current_row,
+                col=1,
+                secondary_y=(y_col in chart["secondary_cols"])
             )
-        )
-    fig.update_layout(
-        xaxis_title=x_col,
-        yaxis_title=", ".join(primary_cols),
-        height=chart_height,
-    )
-    if secondary_cols:
-        fig.update_layout(
-            yaxis2=dict(title=", ".join(secondary_cols), overlaying="y", side="right")
-        )
-else:
-    chart_height = 300 * len(y_cols)
-    fig = make_subplots(rows=len(y_cols), cols=1, shared_xaxes=True, subplot_titles=y_cols)
-    for i, y_col in enumerate(y_cols, start=1):
-        fig.add_trace(go.Scatter(x=df[x_col], y=df[y_col], mode="lines", name=y_col), row=i, col=1)
-    fig.update_xaxes(title_text=x_col, row=len(y_cols), col=1)
-    fig.update_layout(height=chart_height, showlegend=False)
 
-# st.plotly_chart의 height 기본값('content')은 fig.update_layout(height=...)를 반영하지 않고
-# 고정 크기로 렌더링해 서브플롯이 잘리는 문제가 있어 - 여기서 명시적으로 넘겨줘야 함.
+        # update y axis titles if needed
+        fig.update_yaxes(title_text=", ".join(primary_cols), row=current_row, col=1, secondary_y=False)
+        if chart["secondary_cols"]:
+            fig.update_yaxes(title_text=", ".join(chart["secondary_cols"]), row=current_row, col=1, secondary_y=True)
+
+        current_row += 1
+    else:
+        for y_col in chart["y_cols"]:
+            fig.add_trace(
+                go.Scatter(
+                    x=df[x_col],
+                    y=df[y_col],
+                    mode="lines",
+                    name=y_col
+                ),
+                row=current_row,
+                col=1
+            )
+            current_row += 1
+
+fig.update_xaxes(title_text=x_col, row=total_rows, col=1)
+chart_height = 300 * total_rows
+fig.update_layout(height=chart_height, showlegend=True)
+
 st.plotly_chart(fig, use_container_width=True, height=chart_height)
