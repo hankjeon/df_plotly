@@ -14,7 +14,7 @@ st.markdown("""
     <style>
         .block-container {
             padding-top: 1rem;
-            padding-bottom: 0rem;
+            padding-bottom: 3rem;
         }
         header {visibility: hidden;}
     </style>
@@ -51,7 +51,7 @@ col1, col2 = st.columns([2, 1])
 with col1:
     new_graph_type = st.radio("그래프 타입 선택", ["Overlay (하나의 영역에 겹치기)", "Stacked (항목별 위아래 서브플롯)"], horizontal=True)
 with col2:
-    if st.button("그래프 생성하기", use_container_width=True):
+    if st.button("그래프 생성하기", width='stretch'):
         st.session_state.graph_counter += 1
         st.session_state.graphs.append({
             "id": st.session_state.graph_counter,
@@ -87,7 +87,7 @@ for idx, g in enumerate(st.session_state.graphs):
         
     with col_del:
         st.write("") # 버튼 위치 조정
-        if st.button("❌ 삭제", key=f"del_{g['id']}", use_container_width=True):
+        if st.button("❌ 삭제", key=f"del_{g['id']}", width='stretch'):
             st.session_state.graphs.pop(idx)
             st.rerun()
 
@@ -127,10 +127,11 @@ for idx, g in enumerate(st.session_state.graphs):
             height=600,
             margin=dict(t=30)
         )
+        fig.update_xaxes(showgrid=True)
         if g['secondary_cols']:
             fig.update_layout(yaxis2=dict(title=", ".join(g['secondary_cols']), overlaying='y', side='right'))
             
-        st.plotly_chart(fig, use_container_width=True, height=600)
+        st.plotly_chart(fig, width='stretch', height=600)
         
     elif g['type'] == "Stacked":
         # 높이를 줄이고(200), 서브플롯 간 여백(vertical_spacing)을 최소화
@@ -146,9 +147,10 @@ for idx, g in enumerate(st.session_state.graphs):
         for i, y_col in enumerate(g['y_cols'], start=1):
             fig.add_trace(go.Scatter(x=df[g['x_col']], y=df[y_col], mode='lines', name=y_col), row=i, col=1)
             
+        fig.update_xaxes(showgrid=True)
         fig.update_xaxes(title_text=g['x_col'], row=len(g['y_cols']), col=1)
         fig.update_layout(height=chart_height, showlegend=False, margin=dict(t=30))
         
-        st.plotly_chart(fig, use_container_width=True, height=chart_height)
+        st.plotly_chart(fig, width='stretch', height=chart_height)
 
     st.markdown("---")
